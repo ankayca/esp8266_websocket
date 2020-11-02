@@ -56,6 +56,8 @@ static void count_task(void* pvParameters) {
     uart_event_t event;
     uint8_t *dtmp = (uint8_t *) malloc(RD_BUF_SIZE);
 
+    // int len;
+    // int clients;
     for (;;) {
         // Waiting for UART event.
         if (xQueueReceive(uart0_queue, (void *)&event, (portTickType)portMAX_DELAY)) {
@@ -69,6 +71,14 @@ static void count_task(void* pvParameters) {
                 case UART_DATA:
                     ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
                     uart_read_bytes(EX_UART_NUM, dtmp, event.size, portMAX_DELAY);
+
+                    // I can read and write dtmp , but I want to send data via web socket
+                    // clients = ws_server_send_text_all(out,len);
+
+                    // ws_server_send_text_all() declatered  from components/websocket/websocket.c
+
+
+
                     ESP_LOGI(TAG, "[DATA EVT]:");
                     uart_write_bytes(EX_UART_NUM, (const char *) dtmp, event.size);
                     break;

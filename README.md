@@ -1,31 +1,30 @@
-# ESP32-S2
+# ESP8266
 
 I recommended lubuntu 18.4 and python3 for this tutorial
 
-# First step: Download esp-idf
+# First step: Download ESP8266 RTOS SDK
 ```
 cd ~/esp
-git clone --recursive https://github.com/espressif/esp-idf.git'
+git clone --recursive https://github.com/espressif/ESP8266_RTOS_SDK.git
 ```
 
 # Second step: Install
 ```
-cd ~/esp/esp-idf
+cd ~/esp/ESP8266_RTOS_SDK
 ./install.sh
 ```
 
 # Export tools
 `. ./export.sh`
 
-Our main compile file is idf.py . Before use it, we must export tools every terminal
-
-We can create a alians to do this with this commands.
+now you can use make tools with xtensa_106lx.
+Create an alias for make tools 
 
 `sudo gedit ~/.bashrc`
 
 Write this command start of script.
 
-`alias get_idf='. $HOME/esp/esp-idf/export.sh'`
+`alias idf='. /home/ahmet/esp/ESP8266_RTOS_SDK/export.sh''
 
 There two way to compile and flash projects.(recommended 2. way)
 
@@ -47,34 +46,35 @@ Note: When we changed projects compiler step in a bug like : Build tools not con
 After export tools we can compile and flash our first program
 ```
 cd ~/esp
-cp -r /esp-idf/examples/get-started/blink
+cp -r /ESP8266_RTOS_SDK/examples/get-started/blink
 cd blink
 ```
 Write this command to export tools
 
-`get_idf`
+`idf`
 
-Set project target with this command
-
-`idf.py set-target esp32s2`
 
 Regulate config.(Default configs enough yet.)
 
-`idf.py menuconfig`
+`make menuconfig`
+# Learn port of device.
 
-Build the project.
+`ls /dev/tty*`
+run make menuconfig  Serial flasher config > Default serial port <your port>
 
-`idf.py build`
+# Build the project.
+
+`make`
 
 # Flash 
 
-Learn port of device.
+`make flash`
 
-`ls /dev/tty*`
 
-Put it in device !!!
+# Eror of permission :
 
-`idf.py -p /dev/ttyUSB0 flash`
+`sudo chmod 777 <your port>`
+try again flashing
         
 # congratulations
 
