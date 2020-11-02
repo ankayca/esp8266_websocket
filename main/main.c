@@ -71,13 +71,27 @@ static void count_task(void* pvParameters) {
                 case UART_DATA:
                     ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
                     uart_read_bytes(EX_UART_NUM, dtmp, event.size, portMAX_DELAY);
-
-                    // I can read and write dtmp , but I want to send data via web socket
+    
+                    // I can read and write dtmp with uart_read_bytes() , but I want to send data via web socket
                     // clients = ws_server_send_text_all(out,len);
-
+                   
                     // ws_server_send_text_all() declatered  from components/websocket/websocket.c
+                    // uart_read_bytes() declareted 
 
-
+                                        /**
+                     * @brief UART read bytes from UART buffer
+                     *
+                     * @param uart_num Uart port number.
+                     * @param buf     pointer to the buffer.
+                     * @param length  data length
+                     * @param ticks_to_wait sTimeout, count in RTOS ticks
+                     *
+                     * @return
+                     *     - (-1) Error
+                     *     - OTHERS (>=0) The number of bytes read from UART FIFO
+                     */
+                    //int uart_read_bytes(uart_port_t uart_num, uint8_t *buf, uint32_t length, TickType_t ticks_to_wait);
+                    
 
                     ESP_LOGI(TAG, "[DATA EVT]:");
                     uart_write_bytes(EX_UART_NUM, (const char *) dtmp, event.size);
