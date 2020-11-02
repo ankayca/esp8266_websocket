@@ -36,7 +36,7 @@ Download eclipse from this link: https://www.eclipse.org/downloads/
 
 Install eclipse C/C++ developer kit
 
-this tutorial show how to configs and other stuffs : https://github.com/espressif/idf-eclipse-plugin/blob/master/README.md
+this tutorial show how to configs and other stuffs : https://docs.espressif.com/projects/esp8266-rtos-sdk/en/latest/get-started/eclipse-setup.html
 
 Note: When we changed projects compiler step in a bug like : Build tools not configured correctly 
 
