@@ -17,4 +17,6 @@ esp_err_t event_handler(void* ctx, system_event_t* event);
  void http_serve(struct netconn *conn);
  void server_task(void* pvParameters);
  void server_handle_task(void* pvParameters);
+ void uart_init(void);
+ void uart_handler(void* pvParameters);
 #endif /* COMPONENTS_ESP32_WEBSOCKET_MASTER_INCLUDE_SERVER_H_ */

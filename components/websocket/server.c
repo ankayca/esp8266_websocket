@@ -10,6 +10,8 @@
 
 #include "lwip/api.h"
 
+#include "driver/uart.h"
+
 #include "esp_wifi.h"
 #include "esp_log.h"
 #include "esp_event.h"
@@ -20,9 +22,17 @@
 #include "websocket_server.h"
 #include "server.h"
 
-#define LED_PIN 8
+#define LED_PIN 18
 #define AP_SSID "admin"
-#define AP_PSSWD "password"
+#define AP_PSSWD "aaaaaaaa"
+#define EX_UART_NUM UART_NUM_0
+
+#define BUF_SIZE (1024)
+#define RD_BUF_SIZE (BUF_SIZE)
+static QueueHandle_t uart0_queue;
+static const char *TAG = "uart_events";
+uint8_t len2=0,count,count2=0;
+char array[1024];
 
 static ledc_channel_config_t ledc_channel;
 QueueHandle_t client_queue;
@@ -113,16 +123,12 @@ void wifi_setup() {
 }
 // sets up the led for pwm
 void led_duty(uint16_t duty) {
-	const char* TAG = "led duty";
   static uint16_t val;
   static uint16_t max = (1L<<10)-1;
   if(duty > 100) return;
   val = (duty * max) / 100;
-  ESP_LOGI(TAG,"11111111111");
   ledc_set_duty(ledc_channel.speed_mode,ledc_channel.channel,val);
-  ESP_LOGI(TAG,"2222222222");
   ledc_update_duty(ledc_channel.speed_mode,ledc_channel.channel);
-  ESP_LOGI(TAG,"333333333");
 }
 
 void led_setup() {
@@ -146,6 +152,103 @@ void led_setup() {
   //led_duty(0);
   ESP_LOGI(TAG,"led is off and ready, 10 bits");
 }
+
+void uart_init(void){
+	 uart_config_t uart_config = {
+	        .baud_rate = 9600,
+	        .data_bits = UART_DATA_8_BITS,
+	        .parity = UART_PARITY_DISABLE,
+	        .stop_bits = UART_STOP_BITS_1,
+	        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+	    };
+	    uart_param_config(EX_UART_NUM, &uart_config);
+
+	    // Install UART driver, and get the queue.
+	    uart_driver_install(EX_UART_NUM, BUF_SIZE * 2, BUF_SIZE * 2, 100, &uart0_queue, 0);
+}
+void uart_handler(void* pvParameters) {
+	char out[4];
+	uint8_t count=0,count2=0;
+    uart_event_t event;
+
+    uint8_t *dtmp = (uint8_t *) malloc(RD_BUF_SIZE);
+
+    for (;;) {
+        // Waiting for UART event.
+        if (xQueueReceive(uart0_queue, (void *)&event, (portTickType)portMAX_DELAY)) {
+            //bzero(dtmp, RD_BUF_SIZE);
+            //ESP_LOGI(TAG, "uart[%d] event:", EX_UART_NUM);
+
+            switch (event.type) {
+                // Event of UART receving data
+                // We'd better handler data event fast, there would be much more data events than
+                // other types of events. If we take too much time on data event, the queue might be full.
+                case UART_DATA:
+                    //ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
+                    //printf(" basliyorr\n\r");
+                    uart_flush_input(EX_UART_NUM);
+                    uart_read_bytes(EX_UART_NUM, dtmp, event.size, portMAX_DELAY);
+
+
+
+
+                    for(count=0;count <= event.size;count++){
+                    	if( ((dtmp[count]== 83) || (dtmp[count] == 65) ) &&  (dtmp[count+5] == 72) ){
+
+								for(count2=0;count2 <=4; count2++){
+									out[count2] = dtmp[count+count2];
+
+								}
+								 ws_server_send_text_all(out,5);
+								 //ESP_LOGI(TAG, "fordan ciktim %s",out);
+
+							}
+
+
+						}
+                    uart_flush_input(EX_UART_NUM);
+                    break;
+
+                // Event of HW FIFO overflow detected
+                case UART_FIFO_OVF:
+                    ESP_LOGI(TAG, "hw fifo overflow");
+                    // If fifo overflow happened, you should consider adding flow control for your application.
+                    // The ISR has already reset the rx FIFO,
+                    // As an example, we directly flush the rx buffer here in order to read more data.
+                    uart_flush_input(EX_UART_NUM);
+                    xQueueReset(uart0_queue);
+                    break;
+
+                // Event of UART ring buffer full
+                case UART_BUFFER_FULL:
+                    ESP_LOGI(TAG, "ring buffer full");
+                    // If buffer full happened, you should consider encreasing your buffer size
+                    // As an example, we directly flush the rx buffer here in order to read more data.
+                    uart_flush_input(EX_UART_NUM);
+                    xQueueReset(uart0_queue);
+                    break;
+
+                case UART_PARITY_ERR:
+                    ESP_LOGI(TAG, "uart parity error");
+                    break;
+
+                // Event of UART frame error
+                case UART_FRAME_ERR:
+                    ESP_LOGI(TAG, "uart frame error");
+                    break;
+
+                // Others
+                default:
+                    ESP_LOGI(TAG, "uart event type: %d", event.type);
+                    break;
+            }
+        }
+    }
+
+    free(dtmp);
+    dtmp = NULL;
+    vTaskDelete(NULL);
+}
 void websocket_callback(uint8_t num,WEBSOCKET_TYPE_t type,char* msg,uint64_t len) {
   const static char* TAG = "websocket_callback";
   int value;
@@ -153,8 +256,11 @@ void websocket_callback(uint8_t num,WEBSOCKET_TYPE_t type,char* msg,uint64_t len
   switch(type) {
     case WEBSOCKET_CONNECT:
       ESP_LOGI(TAG,"client %i connected!",num);
+
+
       break;
     case WEBSOCKET_DISCONNECT_EXTERNAL:
+
       ESP_LOGI(TAG,"client %i sent a disconnect message",num);
 
       break;
@@ -163,34 +269,10 @@ void websocket_callback(uint8_t num,WEBSOCKET_TYPE_t type,char* msg,uint64_t len
       break;
     case WEBSOCKET_DISCONNECT_ERROR:
       ESP_LOGI(TAG,"client %i was disconnected due to an error",num);
-
       break;
     case WEBSOCKET_TEXT:
-      if(len) { // if the message length was greater than zero
-    	  ESP_LOGI(TAG,"value222: %s",msg);
-        switch(msg[0]) {
-          case 'L':
-            if(sscanf(msg,"L%i",&value)) {
-              ESP_LOGI(TAG,"value: %i",value);
-              //do what do you want with value
-              //USER CODES
-              ESP_LOGI(TAG,"value: %s",msg);
-              //led_duty(value);
 
-              //USER CODES
-              ws_server_send_text_all_from_callback(msg,len); // broadcast it!
-            }
-            break;
-          case 'M':
-
-			  ESP_LOGI(TAG, "got message length %i: %s", (int)len-1, &(msg[1]));
-
-            break;
-          default:
-	          ESP_LOGI(TAG, "got an unknown message with length %i", (int)len);
-	          break;
-        }
-      }
+      ESP_LOGI(TAG, "bisey var gibi ");
       break;
     case WEBSOCKET_BIN:
       ESP_LOGI(TAG,"client %i sent binary message of size %i:\n%s",num,(uint32_t)len,msg);
@@ -207,8 +289,7 @@ void websocket_callback(uint8_t num,WEBSOCKET_TYPE_t type,char* msg,uint64_t len
 void http_serve(struct netconn *conn) {
   const static char* TAG = "http_server";
   const static char HTML_HEADER[] = "HTTP/1.1 200 OK\nContent-type: text/html\n\n";
-  const static char ERROR_HEADER[] = "HTTP/1.1 404 Not Found\nContent-type: text/html\n\n";
-  const static char ICO_HEADER[] = "HTTP/1.1 200 OK\nContent-type: image/x-icon\n\n";
+
   const static char JS_HEADER[] = "HTTP/1.1 200 OK\nContent-type: text/javascript\n\n";
   const static char CSS_HEADER[] = "HTTP/1.1 200 OK\nContent-type: text/css\n\n";
   struct netbuf* inbuf;
@@ -231,16 +312,6 @@ void http_serve(struct netconn *conn) {
   extern const uint8_t test_css_end[] asm("_binary_test_css_end");
   const uint32_t test_css_len = test_css_end - test_css_start;
 
-  // favicon.ico
-  extern const uint8_t favicon_ico_start[] asm("_binary_favicon_ico_start");
-  extern const uint8_t favicon_ico_end[] asm("_binary_favicon_ico_end");
-  const uint32_t favicon_ico_len = favicon_ico_end - favicon_ico_start;
-
-  // error page
-  extern const uint8_t error_html_start[] asm("_binary_error_html_start");
-  extern const uint8_t error_html_end[] asm("_binary_error_html_end");
-  const uint32_t error_html_len = error_html_end - error_html_start;
-
 
   netconn_set_recvtimeout(conn,1000); // allow a connection timeout of 1 second
   ESP_LOGI(TAG,"reading from client...");
@@ -249,83 +320,68 @@ void http_serve(struct netconn *conn) {
   if(err==ERR_OK) {
     netbuf_data(inbuf, (void**)&buf, &buflen);
     if(buf) {
-    	 // default page
-    	      if     (strstr(buf,"GET / ")
-    	          && !strstr(buf,"Upgrade: websocket")) {
-    	        ESP_LOGI(TAG,"Sending /");
-    	        netconn_write(conn, HTML_HEADER, sizeof(HTML_HEADER)-1,NETCONN_NOCOPY);
-    	        netconn_write(conn, root_html_start,root_html_len,NETCONN_NOCOPY);
-    	        netconn_close(conn);
-    	        netconn_delete(conn);
-    	        netbuf_delete(inbuf);
-    	      }
 
-    	      // default page websocket
-    	      else if(strstr(buf,"GET / ")
-    	           && strstr(buf,"Upgrade: websocket")) {
-    	        ESP_LOGI(TAG,"Requesting websocket on /");
-    	        ws_server_add_client(conn,buf,buflen,"/",websocket_callback);
-    	        netbuf_delete(inbuf);
-    	      }
+      // default page
+      if     (strstr(buf,"GET / ")
+          && !strstr(buf,"Upgrade: websocket")) {
+        ESP_LOGI(TAG,"Sending /");
+        netconn_write(conn, HTML_HEADER, sizeof(HTML_HEADER)-1,NETCONN_NOCOPY);
+        netconn_write(conn, root_html_start,root_html_len,NETCONN_NOCOPY);
+        netconn_close(conn);
+        netconn_delete(conn);
+        netbuf_delete(inbuf);
+      }
 
-    	      else if(strstr(buf,"GET /test.js ")) {
-    	        ESP_LOGI(TAG,"Sending /test.js");
-    	        netconn_write(conn, JS_HEADER, sizeof(JS_HEADER)-1,NETCONN_NOCOPY);
-    	        netconn_write(conn, test_js_start, test_js_len,NETCONN_NOCOPY);
-    	        netconn_close(conn);
-    	        netconn_delete(conn);
-    	        netbuf_delete(inbuf);
-    	      }
+      // default page websocket
+      else if(strstr(buf,"GET / ")
+           && strstr(buf,"Upgrade: websocket")) {
+        ESP_LOGI(TAG,"Requesting websocket on /");
+        ws_server_add_client(conn,buf,buflen,"/",websocket_callback);
 
-    	      else if(strstr(buf,"GET /test.css ")) {
-    	        ESP_LOGI(TAG,"Sending /test.css");
-    	        netconn_write(conn, CSS_HEADER, sizeof(CSS_HEADER)-1,NETCONN_NOCOPY);
-    	        netconn_write(conn, test_css_start, test_css_len,NETCONN_NOCOPY);
-    	        netconn_close(conn);
-    	        netconn_delete(conn);
-    	        netbuf_delete(inbuf);
-    	      }
+        netbuf_delete(inbuf);
+      }
 
-    	      else if(strstr(buf,"GET /favicon.ico ")) {
-    	        ESP_LOGI(TAG,"Sending favicon.ico");
-    	        netconn_write(conn,ICO_HEADER,sizeof(ICO_HEADER)-1,NETCONN_NOCOPY);
-    	        netconn_write(conn,favicon_ico_start,favicon_ico_len,NETCONN_NOCOPY);
-    	        netconn_close(conn);
-    	        netconn_delete(conn);
-    	        netbuf_delete(inbuf);
-    	      }
+      else if(strstr(buf,"GET /test.js ")) {
+        ESP_LOGI(TAG,"Sending /test.js");
+        netconn_write(conn, JS_HEADER, sizeof(JS_HEADER)-1,NETCONN_NOCOPY);
+        netconn_write(conn, test_js_start, test_js_len,NETCONN_NOCOPY);
+        netconn_close(conn);
+        netconn_delete(conn);
+        netbuf_delete(inbuf);
+      }
 
-    	      else if(strstr(buf,"GET /")) {
-    	        ESP_LOGI(TAG,"Unknown request, sending error page: %s",buf);
-    	        netconn_write(conn, ERROR_HEADER, sizeof(ERROR_HEADER)-1,NETCONN_NOCOPY);
-    	        netconn_write(conn, error_html_start, error_html_len,NETCONN_NOCOPY);
-    	        netconn_close(conn);
-    	        netconn_delete(conn);
-    	        netbuf_delete(inbuf);
-    	      }
+      else if(strstr(buf,"GET /test.css ")) {
+        ESP_LOGI(TAG,"Sending /test.css");
+        netconn_write(conn, CSS_HEADER, sizeof(CSS_HEADER)-1,NETCONN_NOCOPY);
+        netconn_write(conn, test_css_start, test_css_len,NETCONN_NOCOPY);
+        netconn_close(conn);
+        netconn_delete(conn);
+        netbuf_delete(inbuf);
+      }
 
-    	      else {
-    	        ESP_LOGI(TAG,"Unknown request");
-    	        netconn_close(conn);
-    	        netconn_delete(conn);
-    	        netbuf_delete(inbuf);
-    	      }
-    	    }
-    	    else {
-    	      ESP_LOGI(TAG,"Unknown request (empty?...)");
-    	      netconn_close(conn);
-    	      netconn_delete(conn);
-    	      netbuf_delete(inbuf);
-    	    }
-    	  }
-    	  else { // if err==ERR_OK
-    	    ESP_LOGI(TAG,"error on read, closing connection");
-    	    netconn_close(conn);
-    	    netconn_delete(conn);
-    	    netbuf_delete(inbuf);
-    	  }
-    	}
 
+
+      else {
+        ESP_LOGI(TAG,"Unknown request");
+        netconn_close(conn);
+        netconn_delete(conn);
+        netbuf_delete(inbuf);
+      }
+    }
+    else {
+      ESP_LOGI(TAG,"Unknown request (empty?...)");
+      netconn_close(conn);
+      netconn_delete(conn);
+      netbuf_delete(inbuf);
+    }
+  }
+  else { // if err==ERR_OK
+    ESP_LOGI(TAG,"error on read, closing connection");
+    netconn_close(conn);
+    netconn_delete(conn);
+    netbuf_delete(inbuf);
+  }
+}
 // handles clients when they first connect. passes to a queue
 void server_task(void* pvParameters) {
   const static char* TAG = "server_task";
@@ -341,7 +397,9 @@ void server_task(void* pvParameters) {
     err = netconn_accept(conn, &newconn);
     ESP_LOGI(TAG,"new client");
     if(err == ERR_OK) {
+    	ESP_LOGI(TAG,"server_taskin icindeyim 1");
       xQueueSendToBack(client_queue,&newconn,portMAX_DELAY);
+      ESP_LOGI(TAG,"server_taskin icindeyim 2");
       //http_serve(newconn);
     }
   } while(err == ERR_OK);

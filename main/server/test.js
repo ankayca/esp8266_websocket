@@ -26,13 +26,24 @@ websocket.onmessage = function(evt) {
   var msg = evt.data;
   var value;
   switch(msg.charAt(0)) {
+    case 'A':
+      
+      //parseInt(msg.replace(/[^0-9\.]/g, ''), 10);
+      document.getElementById("output").innerHTML = msg.replace('A', '');
+      break;
+    case 'S':
+      document.getElementById("output2").innerHTML = msg.replace('S', '');
+
+      break;
     case 'L':
       console.log(msg);
       value = parseInt(msg.replace(/[^0-9\.]/g, ''), 10);
       slider.value = value;
       console.log("Led = " + value);
       break;
+    
     default:
+
       document.getElementById("output").innerHTML = evt.data;
       break;
   }
